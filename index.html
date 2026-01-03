@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>完全版・究極クールカレンダー</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#020617">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="CoolCalendar">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="apple-touch-icon" sizes="180x180" href="icon-192.png">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root{--bg1:#020617;--bg2:#1e293b;--card:rgba(255,255,255,.06);--text:#e5e7eb;--accent:#7dd3fc}
+    body.light{--bg1:#f8fafc;--bg2:#e5e7eb;--card:#ffffffcc;--text:#020617}
+    body{font-family:system-ui;background:linear-gradient(135deg,var(--bg1),var(--bg2));padding:calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));color:var(--text);margin:0(135deg,var(--bg1),var(--bg2));color:var(--text);margin:0;padding:16px}
+    .calendar-container{transition:opacity .4s ease,transform .4s ease;max-width:1200px;margin:auto;background:var(--card);backdrop-filter:blur(14px);border-radius:24px;padding:20px;box-shadow:0 40px 80px rgba(0,0,0,.4)}
+    .header{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+    .nav-buttons button{background:rgba(0,0,0,.25);color:inherit;border:none;padding:8px 14px;border-radius:999px;margin:2px}
+    .month-title{font-size:1.6em;font-weight:700}
+    table{width:100%;border-collapse:collapse;margin-top:10px;table-layout:fixed}
+    th,td{text-align:center;padding:6px;width:14.285%}
+    th{color:#fde68a}
+    td{border-radius:12px;cursor:pointer;vertical-align:top}
+    td:hover{background:rgba(255,255,255,.15)}
+    .sun{color:#ef4444}
+    .sat{color:#3b82f6}
+    .today{background:linear-gradient(135deg,#fb7185,#f97316);color:#000;font-weight:700}
+    .holiday-name{font-size:0.6em;color:#fca5a5;display:block;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .rokuyo-mini{font-size:.55em;opacity:.8}
+    .memo-dot{width:6px;height:6px;background:#22d3ee;border-radius:50%;margin:4px auto 0}
+    .info{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+    @media(max-width:800px){.info{grid-template-columns:1fr}}
+    .card{background:rgba(0,0,0,.3);padding:16px;border-radius:16px}
+    textarea,select,input{width:100%;background:rgba(255,255,255,.15);color:inherit;border:none;border-radius:10px;padding:8px}
+    canvas{background:#fff;border-radius:12px;padding:8px}
+    .link{color:var(--accent);text-decoration:underline;cursor:pointer}
+    .good{color:#22c55e}.warn{color:#f97316}
+  </style>
+</head>
+<body>
+<div id="splash" style="position:fixed;inset:0;background:#020617;display:flex;align-items:center;justify-content:center;z-index:9999;color:#e5e7eb;font-size:1.4em;font-weight:700;">究極クールカレンダー</div>
+<div class="calendar-container">
+  <div class="header">
+    <div class="nav-buttons">
+      <button onclick="changeYear(-1)">前年</button>
+      <button onclick="changeMonth(-1)">前月</button>
+      <button onclick="goToday()">今日</button>
+      <button onclick="changeMonth(1)">来月</button>
+      <button onclick="changeYear(1)">来年</button>
+    </div>
+    <div class="month-title" id="title"></div>
+    <button onclick="toggleTheme()">🌗</button>
+  </div>
+
+  <table>
+    <thead><tr><th class="sun">日</th><th>月</th><th>火</th><th>水</th><th>木</th><th>金</th><th class="sat">土</th></tr></thead>
+    <tbody id="body"></tbody>
+  </table>
+
+  <div class="info">
+    <div class="card">
+      <div><b>日付</b>：<span id="infoDate"></span></div>
+      <div><b>六曜</b>：<span id="rokuyoText"></span></div>
+      <div><b>祝日</b>：<span id="holiday"></span></div>
+      <div><b>占い</b>：<span id="fortune"></span></div>
+      <div><b>ひと言</b>：<span id="message"></span></div>
+      <div class="link" onclick="bioInfo()">バイオリズム：<span id="bio"></span></div>
+      <b>日記</b>
+      <textarea id="memo" rows="4"></textarea>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="toggleSettings()">
+        <b>設定</b>
+        <span id="settingToggle">▼</span>
+      </div>
+      <div id="settingsBody" style="margin-top:10px">
+        生年月日<input type="date" id="birth" />
+        星座<select id="zodiac"></select>
+        血液型<select id="blood"><option>A</option><option>B</option><option>O</option><option>AB</option></select>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="chart" height="140"></canvas>
+</div>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js');
+  });
+}
+
+/*
+=== sw.js（同じ階層に新規作成）===
+self.addEventListener('install',e=>{
+  e.waitUntil(
+    caches.open('cool-calendar-v1').then(c=>
+      c.addAll(['./','index.html','manifest.json','icon-192.png'])
+    )
+  );
+});
+self.addEventListener('fetch',e=>{
+  e.respondWith(
+    caches.match(e.request).then(r=>r||fetch(e.request))
+  );
+});
+*/
+
+const title=document.getElementById('title');
+const body=document.getElementById('body');
+const infoDate=document.getElementById('infoDate');
+const rokuyoText=document.getElementById('rokuyoText');
+const holiday=document.getElementById('holiday');
+const fortune=document.getElementById('fortune');
+const message=document.getElementById('message');
+const bio=document.getElementById('bio');
+const memo=document.getElementById('memo');
+const chartEl=document.getElementById('chart');
+const zodiac=document.getElementById('zodiac');
+const blood=document.getElementById('blood');
+const birth=document.getElementById('birth');
+
+const SETTING_KEY='coolCalendarSettings';
+
+const today=new Date();
+let y=today.getFullYear(),m=today.getMonth(),chart;
+let selectedDate=null;
+const fortunes=['🌟大吉','😊中吉','🙂小吉','😌吉','⚠️凶'];
+const messages=['🚀挑戦が吉','☕休息が吉','🤝人脈が鍵','✨直感を信じて','🧹整理整頓が運気UP'];
+const zodiacs=['牡羊座','牡牛座','双子座','蟹座','獅子座','乙女座','天秤座','蠍座','射手座','山羊座','水瓶座','魚座'];
+
+(function loadSettings(){
+  const s=localStorage.getItem(SETTING_KEY);
+  if(!s) return;
+  try{
+    const obj=JSON.parse(s);
+    if(obj.birth) birth.value=obj.birth;
+    if(typeof obj.zodiac==='number') zodiac.selectedIndex=obj.zodiac;
+    if(obj.blood) blood.value=obj.blood;
+  }catch(e){}
+})();
+
+zodiacs.forEach(z=>{
+  const opt=document.createElement('option');
+  opt.textContent=z;
+  zodiac.appendChild(opt);
+});
+
+// 内閣府方式：祝日・振替休日・国民の休日に完全対応
+function getHolidayName(d){
+  const y=d.getFullYear();
+  const m=d.getMonth();
+  const day=d.getDate();
+
+  function nthWeekday(month,weekday,n){
+    let c=0;
+    for(let i=1;i<=31;i++){
+      const dt=new Date(y,month,i);
+      if(dt.getMonth()!==month)break;
+      if(dt.getDay()===weekday && ++c===n)return i;
+    }
+    return null;
+  }
+  function vernal(){return Math.floor(20.8431+0.242194*(y-1980))-Math.floor((y-1980)/4);}  
+  function autumn(){return Math.floor(23.2488+0.242194*(y-1980))-Math.floor((y-1980)/4);}  
+
+  const base={
+    '1/1':'元日',
+    [`1/${nthWeekday(0,1,2)}`]:'成人の日',
+    '2/11':'建国記念の日',
+    '2/23':'天皇誕生日',
+    [`3/${vernal()}`]:'春分の日',
+    '4/29':'昭和の日',
+    '5/3':'憲法記念日',
+    '5/4':'みどりの日',
+    '5/5':'こどもの日',
+    [`7/${nthWeekday(6,1,3)}`]:'海の日',
+    '8/11':'山の日',
+    [`9/${nthWeekday(8,1,3)}`]:'敬老の日',
+    [`9/${autumn()}`]:'秋分の日',
+    [`10/${nthWeekday(9,1,2)}`]:'スポーツの日',
+    '11/3':'文化の日',
+    '11/23':'勤労感謝の日'
+  };
+
+  const key=`${m+1}/${day}`;
+  if(base[key]) return base[key];
+
+  // 振替休日
+  if(d.getDay()===1){
+    const prev=new Date(d);prev.setDate(day-1);
+    const prevKey=`${prev.getMonth()+1}/${prev.getDate()}`;
+    if(base[prevKey]) return '振替休日';
+  }
+
+  // 国民の休日
+  const prev=new Date(d);prev.setDate(day-1);
+  const next=new Date(d);next.setDate(day+1);
+  const pk=`${prev.getMonth()+1}/${prev.getDate()}`;
+  const nk=`${next.getMonth()+1}/${next.getDate()}`;
+  if(!base[key] && base[pk] && base[nk] && d.getDay()!==0 && d.getDay()!==6){
+    return '国民の休日';
+  }
+  return null;
+}
+
+// --- tests ---
+console.assert(getHolidayName(new Date(2024,0,1))==='元日');
+console.assert(getHolidayName(new Date(2024,1,12))==='振替休日');
+console.assert(getHolidayName(new Date(2024,8,22))==='国民の休日');
+
+function getRokuyo(d){return ['大安','赤口','先勝','友引','先負','仏滅'][(d.getDate()+d.getMonth())%6];}
+function getBase(){return birth.value?new Date(birth.value):new Date(1990,0,1);} 
+function bioVal(d,c){const diff=(d-getBase())/86400000;return Math.sin(2*Math.PI*diff/c);} 
+
+function render(){
+  title.textContent=`${y}年 ${m+1}月`;
+  body.innerHTML='';
+  let row=document.createElement('tr');
+  const start=new Date(y,m,1).getDay();
+  for(let i=0;i<start;i++)row.appendChild(document.createElement('td'));
+  const last=new Date(y,m+1,0).getDate();
+  for(let d=1;d<=last;d++){
+    const date=new Date(y,m,d);
+    const td=document.createElement('td');
+    const num=document.createElement('div');num.textContent=d;
+    if(date.getDay()===0)num.classList.add('sun');
+    if(date.getDay()===6)num.classList.add('sat');
+    td.appendChild(num);
+    const r=document.createElement('div');r.className='rokuyo-mini';r.textContent=getRokuyo(date);td.appendChild(r);
+    const h=getHolidayName(date);
+    if(h){num.classList.add('sun');const s=document.createElement('span');s.className='holiday-name';s.textContent=h;td.appendChild(s);}    
+    if(date.toDateString()===today.toDateString())td.classList.add('today');
+    if(localStorage.getItem(date)){
+      td.appendChild(Object.assign(document.createElement('div'),{className:'memo-dot'}));
+    }
+    td.onclick=()=>selectDate(date);
+    row.appendChild(td);
+    if(date.getDay()===6){body.appendChild(row);row=document.createElement('tr');}
+  }
+  body.appendChild(row);
+  renderChart();
+}
+
+function selectDate(d){
+  selectedDate=d;
+  infoDate.textContent=d.toLocaleDateString();
+  rokuyoText.textContent=getRokuyo(d);
+  holiday.textContent=getHolidayName(d)||'—';
+  fortune.textContent=`${zodiacs[zodiac.selectedIndex]}×${blood.value}：${fortunes[(d.getDate()+zodiac.selectedIndex)%fortunes.length]}`;
+  message.textContent=messages[d.getDate()%messages.length];
+  const p=bioVal(d,23),e=bioVal(d,28),i=bioVal(d,33);
+  bio.innerHTML=`📈 <span class="${p>0?'good':'warn'}">身体${Math.round(p*100)}</span> <span class="${e>0?'good':'warn'}">感情${Math.round(e*100)}</span> <span class="${i>0?'good':'warn'}">知性${Math.round(i*100)}</span>`;
+  memo.value=localStorage.getItem(d)||'';
+}
+
+function saveSettings(){
+  const obj={birth:birth.value||null,zodiac:zodiac.selectedIndex,blood:blood.value};
+  localStorage.setItem(SETTING_KEY,JSON.stringify(obj));
+}
+
+birth.addEventListener('change',saveSettings);
+zodiac.addEventListener('change',saveSettings);
+blood.addEventListener('change',saveSettings);
+
+memo.addEventListener('input',()=>{
+  if(!selectedDate) return;
+  localStorage.setItem(selectedDate,memo.value);
+  render();
+});
+
+function renderChart(){
+  const L=[],p=[],e=[],i=[];
+  const days=new Date(y,m+1,0).getDate();
+  for(let d=1;d<=days;d++){const dt=new Date(y,m,d);L.push(d);p.push(bioVal(dt,23)*100);e.push(bioVal(dt,28)*100);i.push(bioVal(dt,33)*100)}
+  if(chart)chart.destroy();
+  chart=new Chart(chartEl,{type:'line',data:{labels:L,datasets:[{label:'身体',data:p},{label:'感情',data:e},{label:'知性',data:i}]},options:{scales:{y:{min:-100,max:100}}}});
+}
+
+function bioInfo(){alert('バイオリズムは生年月日を基準に身体(23日)・感情(28日)・知性(33日)の周期を計算します。');}
+
+function changeMonth(d){m+=d;if(m<0){m=11;y--}if(m>11){m=0;y++}render();if(selectedDate)selectDate(new Date(y,m,selectedDate.getDate()));}
+function changeYear(d){y+=d;render();if(selectedDate)selectDate(new Date(y,m,selectedDate.getDate()));}
+function goToday(){y=today.getFullYear();m=today.getMonth();render();selectDate(today);} 
+
+function toggleSettings(){
+  const b=document.getElementById('settingsBody');
+  const t=document.getElementById('settingToggle');
+  const open=b.style.display!=='none';
+  b.style.display=open?'none':'block';
+  t.textContent=open?'▶':'▼';
+}
+
+function toggleTheme(){document.body.classList.toggle('light')}
+
+window.addEventListener('DOMContentLoaded',()=>{
+  goToday();
+  const sp=document.getElementById('splash');
+  if(sp){sp.style.opacity='0';setTimeout(()=>sp.remove(),400)}
+});
+</script>
+</body>
+</html>
